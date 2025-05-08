@@ -1,0 +1,31 @@
+{
+  "name": "tradingbot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node tradingbot.js",
+    "logger": "node ws_logger.js",
+    "migrations": "node view_migrations.js",
+    "alerts": "node migration_alert.js",
+    "analyze": "node token_analyzer.js",
+    "debug": "node debug_logger.js",
+    "subscribe": "node subscription_tester.js",
+    "simple": "node simplified_bot.js",
+    "build-test": "npm install && node -e \"console.log('Build test successful!')\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@solana/spl-token": "^0.3.8",
+    "@solana/web3.js": "^1.87.6",
+    "axios": "^1.8.4",
+    "bip39": "^3.1.0",
+    "bs58": "^5.0.0",
+    "node-fetch": "^2.7.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "ws": "^8.18.1"
+  }
+}

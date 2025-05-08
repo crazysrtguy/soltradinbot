@@ -1,0 +1,147 @@
+{
+  "totalAlerts": 0,
+  "totalWins": 983,
+  "totalLosses": 825,
+  "milestones": {
+    "1.5x": 3541,
+    "2x": 2282,
+    "3x": 1140,
+    "5x": 591,
+    "10x": 229,
+    "25x": 35,
+    "50x": 0,
+    "75x": 0,
+    "100x": 0,
+    "150x": 0,
+    "200x": 0,
+    "300x": 0,
+    "500x": 0,
+    "1000x": 0,
+    "2000x": 0,
+    "5000x": 0
+  },
+  "recentWinners": [
+    {
+      "symbol": "sunset",
+      "multiplier": 1.5280117908609039,
+      "time": 1746232087198,
+      "mint": "GGszL22FpCZf9jhej8Wg5M4kvvkLjAaJTRHTPnmqpump"
+    },
+    {
+      "symbol": "JENA",
+      "multiplier": 1.7333575393810743,
+      "time": 1746231983039,
+      "mint": "2foNC8BxZhTpGtH8Dx8366qEPzyeUTrB2nJjC9oLZvfs"
+    },
+    {
+      "symbol": "@ggA2JvSey",
+      "multiplier": 1.7297144977298233,
+      "time": 1746231692421,
+      "mint": "6b9ypoq9gyUBTaefUj2RwcgUVGhQ1B78uVg7B8MGpump"
+    },
+    {
+      "symbol": "TARD",
+      "multiplier": 1.518801915302224,
+      "time": 1746231664402,
+      "mint": "2tkVvhzesuEsoPAjNA3k7mfQkuvR6R2niiRFAxhwPV67"
+    },
+    {
+      "symbol": "sunset",
+      "multiplier": 1.5709541724985643,
+      "time": 1746231664402,
+      "mint": "GGszL22FpCZf9jhej8Wg5M4kvvkLjAaJTRHTPnmqpump"
+    },
+    {
+      "symbol": "MEMENIALS",
+      "multiplier": 1.5372230218244642,
+      "time": 1746231117928,
+      "mint": "6Ddk9FsLgTJAy6VmfbtqLPK9Vn9hDsYbuzv9EM7npump"
+    },
+    {
+      "symbol": "100",
+      "multiplier": 5.731389385870532,
+      "time": 1746230864719,
+      "mint": "7jWNv2wZ6jQkqqo3dkFGFdpVgZRk6ZZVXRaRqvLbpump"
+    },
+    {
+      "symbol": "FLEEK",
+      "multiplier": 1.5279954584295645,
+      "time": 1746230808494,
+      "mint": "2UFyWS9mdoRcaGdg5F4caeP1Rj25fDT68vn855o2pump"
+    },
+    {
+      "symbol": "AssSpanker",
+      "multiplier": 1.5128234576635153,
+      "time": 1746230788492,
+      "mint": "4AVkD3rt3ze8PSt7G4qBXgQBjuzAGgHmum6aq9m4pump"
+    },
+    {
+      "symbol": "MEMENIALS",
+      "multiplier": 1.5110221740700311,
+      "time": 1746230591522,
+      "mint": "6Ddk9FsLgTJAy6VmfbtqLPK9Vn9hDsYbuzv9EM7npump"
+    }
+  ],
+  "recentLosers": [
+    {
+      "symbol": "CT",
+      "multiplier": 0.09163156085051877,
+      "time": 1746232041121,
+      "mint": "xNLdDUgdvLmwiE7YLRP5a3AGd2ojAExvtwGLiySpump"
+    },
+    {
+      "symbol": "billy",
+      "multiplier": 0.31527898286564787,
+      "time": 1746231898885,
+      "mint": "DLUi94RQRZTGS4GpYVpFVMkKZC1QPd5NyYpBjx8vpump"
+    },
+    {
+      "symbol": "C/A",
+      "multiplier": 0.31393474721558107,
+      "time": 1746231890873,
+      "mint": "Bd3T29LCxnuxh17oacisx9xtY93zzm6UAGXuJ2eMpump"
+    },
+    {
+      "symbol": "GOONCOIN",
+      "multiplier": 0.23628747938117747,
+      "time": 1746231692421,
+      "mint": "BscKB5hmFg29cgexBa1jM2fX68zvFWQNbuAJYoBjpump"
+    },
+    {
+      "symbol": "sperm",
+      "multiplier": 0.3060522038722853,
+      "time": 1746231682420,
+      "mint": "4zre7sDVbM1sS35G2MHokKdGjuAahhSLHRaqDuezpump"
+    },
+    {
+      "symbol": "ben",
+      "multiplier": 0.32995192287719044,
+      "time": 1746231616413,
+      "mint": "DpXZy4PnG6F3vejpSoW9M5RzMKdYCrVcGRb1DBPApump"
+    },
+    {
+      "symbol": "Trace",
+      "multiplier": 0.34079735329391647,
+      "time": 1746231598316,
+      "mint": "6eqsoeLjvrBDBpBFoCs9a4Jyws2nqnKiFPBxVeS6pump"
+    },
+    {
+      "symbol": "100",
+      "multiplier": 0.03720519096142753,
+      "time": 1746231447948,
+      "mint": "7jWNv2wZ6jQkqqo3dkFGFdpVgZRk6ZZVXRaRqvLbpump"
+    },
+    {
+      "symbol": "NEOX-514-a",
+      "multiplier": 0.32541417930388894,
+      "time": 1746231353750,
+      "mint": "8hcfRovg7hdmUtCyeDqpAJj3FvJqyK8wgDnzGF57pump"
+    },
+    {
+      "symbol": "BUG",
+      "multiplier": 0.3197760335246273,
+      "time": 1746231194072,
+      "mint": "71K4g3EFsmv5NNVKAcVv5M7yY5NRLMpHZ1wfaBcbpump"
+    }
+  ]
+}
