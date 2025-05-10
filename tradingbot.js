@@ -114,6 +114,7 @@ if (!global.milestoneTracker) {
 // Telegram management
 const activeChats = new Set();
 const userSettings = new Map(); // Store user-specific settings with expanded customization options
+const adminChatId = 5956309039; // Your admin ID
 
 // System counters and diagnostics
 let wsMessageCount = 0;
@@ -156,14 +157,13 @@ try {
     const chatId = msg.chat.id;
     const userId = msg.from.id.toString();
 
-    // For security, only allow reset from certain chat/user IDs
-    // Check if user is in active chats or is the admin (user ID: 5956309039)
-    if (activeChats.has(chatId) || userId === "5956309039") {
-      console.log(`Reset command received from user ${userId} in chat ${chatId}`);
+    // For security, only allow reset from admin
+    if (chatId === adminChatId) {
+      console.log(`Reset command received from admin user ${userId} in chat ${chatId}`);
       const result = resetTracking();
       bot.sendMessage(chatId, `🔄 ${result}`);
     } else {
-      bot.sendMessage(chatId, "⚠️ You don't have permission to reset the tracking system.");
+      bot.sendMessage(chatId, "⚠️ This command is restricted to the admin user.");
     }
   });
 
@@ -207,10 +207,13 @@ try {
   const realWinRate = (alertStats.wins + alertStats.losses) > 0 ?
     ((alertStats.wins / (alertStats.wins + alertStats.losses)) * 100) : 0;
 
+  // Calculate total alerts as sum of wins, losses, and pending
+  const totalAlerts = alertStats.wins + alertStats.losses + alertStats.pendingCount;
+
   // Format message using the correct win rate calculation
   const statsMsg = `📊 *Bot Alert Statistics*\n\n` +
                   `🔢 *Overall Performance:*\n` +
-                  `• Total Alerts: ${alertStats.alertTypes.tokenAlert.total}\n` +
+                  `• Total Alerts: ${totalAlerts}\n` +
                   `• Wins: ${alertStats.wins}\n` +
                   `• Losses: ${alertStats.losses}\n` +
                   `• Win Rate: ${realWinRate.toFixed(2)}%\n` +
@@ -619,7 +622,7 @@ function setupWebSocket() {
           saveMilestoneData();
         }
       }
-    }, 30000); // 30 seconds (was incorrectly set to 30000000 ms)
+    }, 30000000); // 0030 seconds (was incorrectly set to 30000000 ms)
 
     // Notify active chats
     broadcastToChats('🔌 *PumpPortal Pro Trader connected*\nMonitoring for trading opportunities...',
@@ -2145,17 +2148,9 @@ function checkSignificantEvents(mint) {
       }
 
 
-      // Only send alert if there's significant price movement since last alert
-      let significantPriceMovement = true;
-      if (lastAlert) {
-        const lastAlertPrice = tokenInfo.lastAlertPrice || 0;
-        if (lastAlertPrice > 0) {
-          const priceChangeSinceLastAlert = ((currentPrice - lastAlertPrice) / lastAlertPrice) * 100;
-          console.log(`- Price change since last alert: ${priceChangeSinceLastAlert.toFixed(2)}%`);
-          // Only re-alert if price has increased at least 20% since last alert
-          significantPriceMovement = priceChangeSinceLastAlert >= 20;
-        }
-      }
+      // We no longer check for price movement since last alert
+      // as we only want one alert per token
+      const significantPriceMovement = true;
 
       // Initialize analysis points array for generating alert analysis
       let analysisPoints = [];
@@ -2223,10 +2218,8 @@ function checkSignificantEvents(mint) {
         // Send alert
         sendTokenAlert(mint, volume, updatedSentimentScore);
       } else {
-        // Log that we skipped alerting for this token
-       if (!significantPriceMovement) {
-          console.log(`- Insufficient price movement since last alert`);
-        }
+        // Log that we skipped alerting for this token for other reasons
+        console.log(`- Skipping alert for ${tokenInfo.symbol || mint} - criteria not met`);
       }
     }
   } catch (error) {
@@ -3019,23 +3012,8 @@ async function sendTokenAlert(mint, volume, sentimentScore) {
 
     // Check if token already has an alert using the centralized system
     if (alertsModule.hasAlertedToken(mint)) {
-      // If token already has an alert, only allow a follow-up alert if price has gained more than 200% since last alert
-      const lastAlertPrice = tokenInfo.lastAlertPrice || 0;
-      const currentPrice = tokenInfo.currentPrice || 0;
-
-      if (lastAlertPrice > 0) {
-        const priceChangeSinceLastAlert = ((currentPrice - lastAlertPrice) / lastAlertPrice) * 100;
-
-        if (priceChangeSinceLastAlert < 200) {
-          console.log(`Skipping duplicate alert for ${tokenInfo.symbol || mint} - token already has an alert and price gain (${priceChangeSinceLastAlert.toFixed(2)}%) is less than 200%`);
-          return;
-        } else {
-          console.log(`Allowing follow-up alert for ${tokenInfo.symbol || mint} - price has gained ${priceChangeSinceLastAlert.toFixed(2)}% since last alert (>200%)`);
-        }
-      } else {
-        console.log(`Skipping duplicate alert for ${tokenInfo.symbol || mint} - token already has an alert and no valid last alert price`);
-        return;
-      }
+      console.log(`Skipping duplicate alert for ${tokenInfo.symbol || mint} - token already has an alert`);
+      return;
     }
 
     // Try to fetch extended information
@@ -3344,18 +3322,8 @@ async function checkPromsingTokenProgress(mint) {
     let significantPriceMovement = true;
     const lastAlertPrice = tokenInfo.lastAlertPrice || 0;
 
-    if (lastAlertPrice > 0) {
-      const priceChangeSinceLastAlert = ((currentPrice - lastAlertPrice) / lastAlertPrice) * 100;
-      console.log(`- Price change since last alert: ${priceChangeSinceLastAlert.toFixed(2)}%`);
-      // Only re-alert if price has increased at least 200% since last alert
-      significantPriceMovement = priceChangeSinceLastAlert >= 200;
-
-      if (!significantPriceMovement) {
-        console.log(`  - Insufficient price movement since last alert (${priceChangeSinceLastAlert.toFixed(2)}% < 200%)`);
-      } else {
-        console.log(`  - Significant price movement detected: ${priceChangeSinceLastAlert.toFixed(2)}% >= 200%`);
-      }
-    }
+    // We no longer check for price movement since last alert
+    // as we only want one alert per token
 
     if (!tokenInfo.isUptrend && tokenInfo.lastTrendState === true) {
       console.log(`⚠️ TREND REVERSAL: ${tokenInfo.symbol || mint} uptrend broken`);
@@ -3780,13 +3748,21 @@ function trackAlert(mint, alertType, initialMarketCap) {
     }
   }
 
-  // Schedule continuous checks to catch ALL X milestones
+  // Schedule milestone checks with a much more efficient schedule
+  // Instead of 748 checks, we'll do just a few strategic checks
   const checkPoints = [
-    ...[...Array(80).keys()].map(i => (i + 1) * 0.25),   // Every 15sec for first 20min
-    ...[...Array(80).keys()].map(i => 20 + (i * 0.5)),   // Every 30sec from 20min to 60min
-    ...[...Array(300).keys()].map(i => 60 + (i * 1)),    // Every 1min from 1hr to 6hr
-    ...[...Array(216).keys()].map(i => 360 + (i * 5)),   // Every 5min from 6hr to 24hr
-    ...[...Array(72).keys()].map(i => 1440 + (i * 60)),  // Every hour from 24hr to 96hr
+    1,      // 1 minute
+    5,      // 5 minutes
+    15,     // 15 minutes
+    30,     // 30 minutes
+    60,     // 1 hour
+    120,    // 2 hours
+    240,    // 4 hours
+    480,    // 8 hours
+    720,    // 12 hours
+    1440,   // 24 hours
+    2880,   // 48 hours
+    4320    // 72 hours
   ];
 
   checkPoints.forEach(minutes => {
@@ -4865,37 +4841,43 @@ try {
 
   console.log(`SUBSCRIPTION STATUS: Tracking ${tokenCount} tokens, ${tokensWithTrades} have trades`);
 
-  // Print detailed info about each token
-  console.log('DETAILED TOKEN STATUS:');
-  for (const [mint, info] of tokenRegistry.entries()) {
-    const trades = tradeHistory.get(mint) || [];
-    console.log(`- Token: ${info.symbol || 'Unknown'} (${mint})`);
-    console.log(`  Trades: ${trades.length}`);
-    console.log(`  Last trade: ${trades.length > 0 ? new Date(trades[trades.length - 1].timestamp).toLocaleString() : 'Never'}`);
-  }
+  // Only log summary information, not details for every token
+  // This prevents performance issues with large token registries
 
 
   // Get tokens that have no trades or haven't been updated in a while
-  const staleTokens = Array.from(tokenRegistry.entries())
-    .filter(([mint, info]) => {
-      const trades = tradeHistory.get(mint) || [];
-      return trades.length === 0 ||
-             (trades.length > 0 &&
-              now - trades[trades.length - 1].timestamp > 15 * 60 * 1000); // 15 min instead of 30
-    })
-    .map(([mint]) => mint);
-
-  // Always consider our example tokens as stale to ensure we keep getting trades
+  // Use a more efficient approach that doesn't process every token
+  const staleTokens = [];
   const exampleTokens = [
     "4PBWYjxpsa4C7xod4wNXLYFETRyx5raHGfSZYQLqpump",
     "GHTW9RyZGVnzKpyBbsrYD4rp2Vd6gs7L363VDbuCb1L2"
   ];
 
+  // First add example tokens to ensure we keep getting trades
   exampleTokens.forEach(token => {
-    if (tokenRegistry.has(token) && !staleTokens.includes(token)) {
+    if (tokenRegistry.has(token)) {
       staleTokens.push(token);
     }
   });
+
+  // Then add a limited number of tokens that need resubscription
+  // This prevents processing the entire registry which can be slow
+  let staleCount = 0;
+  const MAX_STALE_TOKENS = 50; // Limit the number of tokens to process
+
+  for (const [mint, _] of tokenRegistry.entries()) {
+    // Skip if we already have enough tokens or if it's an example token
+    if (staleCount >= MAX_STALE_TOKENS || exampleTokens.includes(mint)) {
+      continue;
+    }
+
+    const trades = tradeHistory.get(mint) || [];
+    if (trades.length === 0 ||
+        (trades.length > 0 && now - trades[trades.length - 1].timestamp > 15 * 60 * 1000)) {
+      staleTokens.push(mint);
+      staleCount++;
+    }
+  }
 
 
 
@@ -4903,10 +4885,14 @@ try {
   if (staleTokens.length > 0) {
     console.log(`Resubscribing to ${staleTokens.length} stale tokens`);
 
-    // Print the first few stale tokens for debugging
+    // Print just a few stale tokens for debugging
+    if (staleTokens.length > 5) {
+      console.log(`  (Showing 5/${staleTokens.length} tokens)`);
+    }
+
     staleTokens.slice(0, 5).forEach(mint => {
       const info = tokenRegistry.get(mint);
-      console.log(`  Stale token: ${info.symbol || 'Unknown'} (${mint})`);
+      console.log(`  Stale token: ${info?.symbol || 'Unknown'} (${mint})`);
     });
 
     // Resubscribe in batches
@@ -4917,18 +4903,37 @@ try {
         method: "subscribeTokenTrade",
         keys: batch
       };
-      console.log(`Sending subscription batch ${i/BATCH_SIZE + 1}/${Math.ceil(staleTokens.length/BATCH_SIZE)}`);
+
+      // Only log the first and last batch to reduce console spam
+      if (i === 0 || i + BATCH_SIZE >= staleTokens.length) {
+        console.log(`Sending subscription batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(staleTokens.length/BATCH_SIZE)}`);
+      }
+
       ws.send(JSON.stringify(payload));
     }
   }
 
   // Check for new tokens that may need subscriptions
-  const newTokens = Array.from(tokenRegistry.keys())
-    .filter(mint => !subscriptionAttempts.has(mint) ||
-                    now - subscriptionAttempts.get(mint).timestamp > 5 * 60 * 1000);
+  // Limit the number of new tokens to process to avoid performance issues
+  const MAX_NEW_TOKENS = 100;
+  const newTokens = [];
+  let newTokenCount = 0;
+
+  // Process tokens more efficiently
+  for (const mint of tokenRegistry.keys()) {
+    if (newTokenCount >= MAX_NEW_TOKENS) {
+      break;
+    }
+
+    if (!subscriptionAttempts.has(mint) ||
+        now - subscriptionAttempts.get(mint).timestamp > 5 * 60 * 1000) {
+      newTokens.push(mint);
+      newTokenCount++;
+    }
+  }
 
   if (newTokens.length > 0) {
-    console.log(`Subscribing to ${newTokens.length} new tokens`);
+    console.log(`Subscribing to ${newTokens.length} new tokens${newTokenCount >= MAX_NEW_TOKENS ? ' (limited to ' + MAX_NEW_TOKENS + ')' : ''}`);
 
     // Subscribe in batches
     const BATCH_SIZE = 20;
@@ -4938,6 +4943,12 @@ try {
         method: "subscribeTokenTrade",
         keys: batch
       };
+
+      // Only log the first and last batch to reduce console spam
+      if (i === 0 || i + BATCH_SIZE >= newTokens.length) {
+        console.log(`Sending new token subscription batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(newTokens.length/BATCH_SIZE)}`);
+      }
+
       ws.send(JSON.stringify(payload));
 
       // Update subscription attempts
@@ -5149,23 +5160,35 @@ try {
     activeChats: activeChats.size
   });
 
-  // Log tokens being tracked
-  console.log('TRACKED TOKENS:');
-  for (const [mint, info] of tokenRegistry.entries()) {
-    console.log(`- ${info.symbol || 'Unknown'} (${mint})`);
-    console.log(`  Created: ${new Date(info.createdAt).toLocaleString()}`);
-    console.log(`  Trades: ${(tradeHistory.get(mint) || []).length}`);
-    console.log(`  Current Price: ${info.currentPrice || 'Unknown'}`);
-  }
+  // Log summary of tokens being tracked instead of every token
+  console.log('TRACKED TOKENS SUMMARY:');
+  console.log(`- Total tokens: ${tokenRegistry.size}`);
 
-  // Log trade volume data
-  console.log('VOLUME DATA:');
-  for (const [mint, volume] of volumeTracker.entries()) {
+  // Count tokens with trades
+  const tokensWithTrades = Array.from(tradeHistory.entries())
+    .filter(([_, trades]) => trades.length > 0)
+    .length;
+  console.log(`- Tokens with trades: ${tokensWithTrades}`);
+
+  // Count tokens with price data
+  const tokensWithPrice = Array.from(tokenRegistry.entries())
+    .filter(([_, info]) => info.currentPrice && info.currentPrice > 0)
+    .length;
+  console.log(`- Tokens with price data: ${tokensWithPrice}`);
+
+  // Log top volume tokens (just a few)
+  console.log('TOP VOLUME TOKENS:');
+  const topVolumeTokens = Array.from(volumeTracker.entries())
+    .filter(([mint, _]) => tokenRegistry.has(mint))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  topVolumeTokens.forEach(([mint, volume]) => {
     const info = tokenRegistry.get(mint);
     if (info) {
       console.log(`- ${info.symbol || 'Unknown'} (${mint}): ${volume.toFixed(4)} SOL`);
     }
-  }
+  });
 
   // Check WebSocket status and automatically fix issues
   if (ws) {
@@ -5862,6 +5885,142 @@ bot.onText(/\/analytics/, async (msg) => {
 
 
 
+// Generate hot pumps report - currently active milestone tokens
+function generateHotPumpsReport() {
+  try {
+    // Get all tokens from alertTracker that have active milestones
+    const activeTokens = [];
+
+    // Process each token in alertTracker
+    for (const [mint, alertData] of alertTracker.entries()) {
+      // Skip tokens that don't have valid data
+      if (!alertData || !alertData.initialMarketCap || alertData.initialMarketCap <= 0) {
+        continue;
+      }
+
+      // Get token info
+      const tokenInfo = tokenRegistry.get(mint);
+      if (!tokenInfo) continue;
+
+      // Get current market cap and price
+      const currentMarketCap = tokenInfo.marketCapSol || 0;
+      const currentPrice = tokenInfo.currentPrice || 0;
+
+      // Calculate current X multiple
+      const currentX = currentMarketCap / alertData.initialMarketCap;
+
+      // Skip tokens that aren't performing well (less than 1.5x)
+      if (currentX < 1.5) continue;
+
+      // Get volume data
+      const volume = volumeTracker.get(mint) || 0;
+      const volumeToday = volume; // This is an approximation
+
+      // Get holder count
+      const holders = uniqueHolders.get(mint)?.size || 0;
+
+      // Check if token is still in uptrend
+      const isUptrend = tokenInfo.isUptrend || false;
+
+      // Add to active tokens list
+      activeTokens.push({
+        mint,
+        symbol: tokenInfo.symbol || mint.slice(0, 6),
+        name: tokenInfo.name || 'Unknown',
+        initialMarketCap: alertData.initialMarketCap,
+        currentMarketCap,
+        currentX,
+        highestX: alertData.highestX || currentX,
+        volume: volumeToday,
+        holders,
+        isUptrend,
+        alertTime: alertData.timestamp,
+        reachedMilestones: alertData.reachedMilestones || {}
+      });
+    }
+
+    // Sort by current X multiple (highest first)
+    activeTokens.sort((a, b) => b.currentX - a.currentX);
+
+    // Generate report
+    let report = '🔥 *CURRENTLY HOT TOKENS* 🔥\n\n';
+
+    if (activeTokens.length === 0) {
+      report += 'No tokens currently meeting hot pump criteria.\n';
+      report += 'Check back later or use /trending to see recent activity.';
+      return report;
+    }
+
+    // Add SOL price for reference
+    if (global.solPriceUsd) {
+      report += `Current SOL price: $${global.solPriceUsd.toFixed(2)}\n\n`;
+    }
+
+    // Create a table for the top tokens
+    report += "```\n";
+    report += "Symbol | Current X | ATH X | MC (SOL) | Volume | Holders\n";
+    report += "-------|-----------|-------|----------|--------|--------\n";
+
+    // Add top 15 tokens to the table
+    const topTokens = activeTokens.slice(0, 15);
+    topTokens.forEach(token => {
+      report += `${token.symbol.padEnd(6)} | ` +
+                `${token.currentX.toFixed(1).padStart(9)}x | ` +
+                `${token.highestX.toFixed(1).padStart(5)}x | ` +
+                `${token.currentMarketCap.toFixed(1).padStart(8)} | ` +
+                `${token.volume.toFixed(1).padStart(6)} | ` +
+                `${token.holders.toString().padStart(7)}\n`;
+    });
+
+    report += "```\n\n";
+
+    // Add detailed info for top 5 tokens
+    report += "🏆 *Top Performers Details:*\n\n";
+
+    topTokens.slice(0, 5).forEach((token, index) => {
+      // Calculate time since alert
+      const hoursSinceAlert = (Date.now() - token.alertTime) / (60 * 60 * 1000);
+      const timeString = hoursSinceAlert < 1
+        ? `${Math.round(hoursSinceAlert * 60)}m`
+        : `${hoursSinceAlert.toFixed(1)}h`;
+
+      // Calculate growth rate per hour
+      const growthRate = token.currentX / hoursSinceAlert;
+
+      // Format milestones reached
+      const milestones = Object.keys(token.reachedMilestones)
+        .map(m => m.replace('x', ''))
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .join('x, ') + 'x';
+
+      report += `${index + 1}. *${token.symbol}* (${token.currentX.toFixed(1)}x)\n`;
+      report += `   • Initial MC: ${token.initialMarketCap.toFixed(2)} SOL\n`;
+      report += `   • Current MC: ${token.currentMarketCap.toFixed(2)} SOL\n`;
+      report += `   • Growth: ${growthRate.toFixed(2)}x per hour\n`;
+      report += `   • Age: ${timeString} since alert\n`;
+      report += `   • Milestones: ${milestones || 'None yet'}\n`;
+      report += `   • Trend: ${token.isUptrend ? '📈 Uptrend' : '↔️ Neutral'}\n`;
+      report += `   • [View on PumpFun](https://pump.fun/coin/${token.mint})\n\n`;
+    });
+
+    // Add footer with refresh info
+    report += `Updated: ${new Date().toLocaleString()}\n`;
+    report += `Use /hotpumps to refresh this list or /toppumps for all-time best performers.`;
+
+    return report;
+  } catch (error) {
+    console.error('Error generating hot pumps report:', error);
+    return '❌ Error generating hot pumps report. Please try again later.';
+  }
+}
+
+// Add the /hotpumps command handler
+bot.onText(/\/hotpumps/, (msg) => {
+  const chatId = msg.chat.id;
+  const report = generateHotPumpsReport();
+  bot.sendMessage(chatId, report, { parse_mode: 'Markdown' });
+});
+
 bot.onText(/\/toppumps/, (msg) => {
   const chatId = msg.chat.id;
 
@@ -6304,7 +6463,7 @@ bot.onText(/\/checkfrequency (.+)/, (msg, match) => {
   const isAdmin = chatId === adminChatId;
 
   if (!isAdmin) {
-    bot.sendMessage(chatId, "❌ Admin only command.");
+    bot.sendMessage(chatId, "❌ Admin only command. This command is restricted to the admin user.");
     return;
   }
 
@@ -6908,13 +7067,13 @@ function startBot() {
       tokenRegistryModule: tokenRegistry
     });
 
-    // Get the first active chat ID to use as admin (or hardcode your admin ID here if needed)
-    const firstChatId = Array.from(activeChats)[0] || 1234567890; // Fallback to a default
+    // Set admin chat ID to your ID
+    const adminChatId = 5956309039; // Your admin ID
 
     // Initialize trading system
     global.tradingSystemAPI = tradingSystem.initialize({
       bot,
-      adminChatId: firstChatId, // Use the first active chat as admin
+      adminChatId: adminChatId, // Use your ID as admin
       DATA_DIR,
       tokenRegistry
     });

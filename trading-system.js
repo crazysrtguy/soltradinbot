@@ -44,15 +44,32 @@ function initialize(config) {
   setupTradingCommands();
   setupCallbackHandlers();
 
-  // Set up a periodic check for position status (every 5 seconds)
-  setInterval(checkAllPositions, 5 * 1000);
+  // Store interval IDs so we can adjust them when auto-trading is toggled
+  global.tradingIntervals = {
+    positionCheck: null,
+    failedSalesRetry: null
+  };
 
-  // Set up periodic retries for failed sales (every 10 minutes)
-  setInterval(retryFailedSales, 10 * 60 * 1000);
+  // Set up interval timers with appropriate frequencies based on auto-trading status
+  setupIntervalTimers();
 
   console.log('Trading system initialized');
   console.log(`Auto-trading is ${tradingConfig.autoTrading ? 'ENABLED' : 'DISABLED'}`);
   console.log(`Auto-trading messages are ${tradingConfig.showAutoTradingMessages ? 'ENABLED' : 'DISABLED'}`);
+
+  // Add a function to toggle auto-trading that also adjusts interval timers
+  tradingConfig.toggleAutoTrading = (enable) => {
+    const wasEnabled = tradingConfig.autoTrading;
+    tradingConfig.autoTrading = enable;
+
+    // If auto-trading status changed, adjust interval timers
+    if (wasEnabled !== enable) {
+      console.log(`Auto-trading ${enable ? 'enabled' : 'disabled'}, adjusting interval timers...`);
+      setupIntervalTimers();
+    }
+
+    return enable;
+  };
 
   return {
     tradingConfig,
@@ -63,7 +80,8 @@ function initialize(config) {
     updateProfitStats,
     hookIntoAlertTracker,
     retryFailedSales,
-    forceUpdateAllPositionPrices // Add new function to API
+    forceUpdateAllPositionPrices, // Add new function to API
+    setupIntervalTimers // Add function to adjust interval timers
   };
 }
 
@@ -76,11 +94,8 @@ function setupCallbackHandlers() {
     const messageId = callbackQuery.message.message_id;
 
     try {
-      // Only process if from admin chat
-      if (chatId !== adminChatId) {
-        bot.answerCallbackQuery(callbackQuery.id, { text: "This action is restricted to admin." });
-        return;
-      }
+      // Allow all users to use trading buttons
+      // Only restrict sensitive commands like reset milestone or trading data
 
       // Sell all tokens action
       if (callbackData.startsWith('sell_all_')) {
@@ -979,10 +994,14 @@ function updateProfitStats() {
 
   // Calculate from completed trades
   tradingConfig.tradeHistory.forEach(trade => {
-    stats.totalInvested += trade.investmentAmount;
-    stats.totalReturned += trade.returnAmount;
+    // Ensure investmentAmount and returnAmount are valid numbers
+    const investmentAmount = trade.investmentAmount || 0;
+    const returnAmount = trade.returnAmount || 0;
 
-    if (trade.returnAmount > trade.investmentAmount) {
+    stats.totalInvested += investmentAmount;
+    stats.totalReturned += returnAmount;
+
+    if (returnAmount > investmentAmount) {
       stats.winCount++;
     } else {
       stats.lossCount++;
@@ -991,7 +1010,9 @@ function updateProfitStats() {
 
   // Calculate active investment
   tradingConfig.activePositions.forEach(position => {
-    stats.activeInvestment += position.investmentAmount;
+    // Ensure investmentAmount is a valid number
+    const investmentAmount = position.investmentAmount || 0;
+    stats.activeInvestment += investmentAmount;
   });
 
   // Calculate total profit
@@ -1005,36 +1026,39 @@ function updateProfitStats() {
 
 // Process new alert for potential entry
 function processAlertForTrading(mint, alertData, tokenInfo) {
-  // Log that we received an alert for trading consideration
-  if (tradingConfig.showAutoTradingMessages) {
-    console.log(`[TRADING] Received ${alertData.type} alert for ${alertData.symbol || mint}: Evaluating for potential ${tradingConfig.autoTrading ? 'real' : 'simulated'} trading`);
+  // Skip all processing if auto-trading is off
+  if (!tradingConfig.autoTrading) {
+    // If auto-trading is disabled, don't process any alerts
+    return null;
   }
 
-  // For simulation, we'll still track the position but note that it's just a simulation
-  const isSimulation = !tradingConfig.autoTrading;
+  // Log that we received an alert for trading consideration
+  if (tradingConfig.showAutoTradingMessages) {
+    console.log(`[TRADING] Received ${alertData.type} alert for ${alertData.symbol || mint}: Evaluating for potential trading`);
+  }
 
   // Skip if we're only tracking specific tokens and this isn't one of them
   if (!tradingConfig.trackAllTokens && !tradingConfig.trackedTokens.has(mint)) {
     console.log(`[TRADING] Skipping ${alertData.symbol || mint} - not in tracked tokens list`);
-    return;
+    return null;
   }
 
   // Skip if market cap is too low
   if (alertData.initialMarketCap < tradingConfig.minMarketCap) {
     console.log(`Skipping ${alertData.symbol} for trading - market cap too low: ${alertData.initialMarketCap} SOL`);
-    return;
+    return null;
   }
 
   // Skip if we already have an active position for this token
   if (tradingConfig.activePositions.has(mint)) {
     console.log(`Already have an active position for ${alertData.symbol} - skipping`);
-    return;
+    return null;
   }
 
   // Skip if we have reached the maximum number of active positions
   if (tradingConfig.activePositions.size >= tradingConfig.maxActivePositions) {
     console.log(`Maximum active positions reached (${tradingConfig.maxActivePositions}) - skipping new entry`);
-    return;
+    return null;
   }
 
   // Calculate entry details
@@ -1066,7 +1090,7 @@ function processAlertForTrading(mint, alertData, tokenInfo) {
     status: 'active',
     market: 'solana', // Default market
     lastChecked: Date.now(),
-    isSimulation: !tradingConfig.autoTrading // Flag to mark simulation entries
+    isSimulation: false // No simulation entries anymore
   };
 
   // Add to active positions
@@ -1078,32 +1102,28 @@ function processAlertForTrading(mint, alertData, tokenInfo) {
   // Save updated configuration
   saveTradingConfig();
 
-  // Execute the actual buy order if auto-trading is enabled
-  if (tradingConfig.autoTrading) {
-    if (tradingConfig.showAutoTradingMessages) {
-      console.log(`[REAL TRADE] Executing real buy for ${position.symbol} with ${investmentAmount} SOL`);
-    }
-    executeBuyOrder(position).then(success => {
-      if (tradingConfig.showAutoTradingMessages) {
-        if (success) {
-          console.log(`Successfully placed buy order for ${position.symbol}`);
-        } else {
-          console.log(`Failed to place buy order for ${position.symbol}`);
-        }
-      }
-    });
-  } else {
-    if (tradingConfig.showAutoTradingMessages) {
-      console.log(`[SIMULATION] Would buy ${position.symbol} with ${investmentAmount} SOL (simulation mode)`);
-    }
+  // Execute the actual buy order
+  if (tradingConfig.showAutoTradingMessages) {
+    console.log(`[REAL TRADE] Executing real buy for ${position.symbol} with ${investmentAmount} SOL`);
   }
 
-  // Send notification
+  executeBuyOrder(position).then(success => {
+    if (tradingConfig.showAutoTradingMessages) {
+      if (success) {
+        console.log(`Successfully placed buy order for ${position.symbol}`);
+      } else {
+        console.log(`Failed to place buy order for ${position.symbol}`);
+      }
+    }
+  });
+
+  // Send notification if notifications are enabled
   if (tradingConfig.notifyOnSignals) {
     notifyBuySignal(position);
   }
 
   console.log(`Added new position for ${position.symbol} at ${position.entryPrice} SOL`);
+
   return position;
 }
 
@@ -1151,8 +1171,9 @@ function checkPosition(mint) {
     console.log(`New highest price for ${position.symbol}: ${currentPrice} SOL`);
   }
 
-  // Calculate current return ratio
-  const currentReturnRatio = currentPrice / position.entryPrice;
+  // Calculate current return ratio (safely)
+  const entryPrice = position.entryPrice || 0.000001; // Avoid division by zero
+  const currentReturnRatio = currentPrice / entryPrice;
   const currentReturnPercent = (currentReturnRatio - 1) * 100;
 
   // Log position status for monitoring (only occasionally to avoid spam)
@@ -1187,29 +1208,80 @@ function checkPosition(mint) {
 
 // Check all active positions
 function checkAllPositions() {
-  console.log(`Checking ${tradingConfig.activePositions.size} active positions...`);
-
-  // Store mints to avoid modification during iteration
-  const mints = Array.from(tradingConfig.activePositions.keys());
-
-  // Check each position
-  mints.forEach(mint => {
-    try {
-      checkPosition(mint);
-    } catch (error) {
-      console.error(`Error checking position for ${mint}:`, error);
+  try {
+    // Skip all checks if auto-trading is disabled
+    if (!tradingConfig.autoTrading) {
+      return; // Don't do any processing when auto-trading is off
     }
-  });
 
-  // Save after batch checking
-  saveTradingConfig();
+    console.log(`Checking ${tradingConfig.activePositions.size} active positions...`);
 
-  console.log('Position check completed');
+    // Ensure activePositions is a valid Map
+    if (!tradingConfig.activePositions || !(tradingConfig.activePositions instanceof Map)) {
+      console.error('Invalid activePositions object. Reinitializing as empty Map.');
+      tradingConfig.activePositions = new Map();
+      saveTradingConfig();
+      return;
+    }
+
+    // Skip if no positions to check
+    if (tradingConfig.activePositions.size === 0) {
+      return;
+    }
+
+    // Store mints to avoid modification during iteration
+    const mints = Array.from(tradingConfig.activePositions.keys());
+
+    // Check each position
+    mints.forEach(mint => {
+      try {
+        if (!mint) {
+          console.error('Found null or undefined mint in activePositions');
+          return;
+        }
+
+        const position = tradingConfig.activePositions.get(mint);
+        if (!position) {
+          console.error(`Position for mint ${mint} is null or undefined`);
+          return;
+        }
+
+        // Validate position has required properties
+        if (!position.investmentAmount) {
+          console.log(`Position for ${mint} missing investmentAmount, setting default`);
+          position.investmentAmount = tradingConfig.defaultInvestment;
+        }
+
+        // Check position
+        checkPosition(mint);
+      } catch (error) {
+        console.error(`Error checking position for ${mint}:`, error);
+      }
+    });
+
+    // Save after batch checking
+    saveTradingConfig();
+    console.log('Position check completed');
+  } catch (error) {
+    console.error('Error in checkAllPositions:', error);
+  }
 }
 
 // Force update all position prices from tokenRegistry and check for take profit/stop loss
 // This can be called manually when needed to ensure all positions have current prices
 function forceUpdateAllPositionPrices() {
+  // Skip if auto-trading is disabled
+  if (!tradingConfig.autoTrading) {
+    console.log('Auto-trading is disabled. No positions to update.');
+    return 0;
+  }
+
+  // Skip if no positions to update
+  if (tradingConfig.activePositions.size === 0) {
+    console.log('No active positions to update.');
+    return 0;
+  }
+
   console.log(`Force updating prices for ${tradingConfig.activePositions.size} active positions...`);
 
   // Store mints to avoid modification during iteration
@@ -1253,10 +1325,13 @@ function forceUpdateAllPositionPrices() {
     }
   });
 
-  // Save after batch checking
-  saveTradingConfig();
+  // Save after batch checking (only if we actually updated positions)
+  if (updatedCount > 0) {
+    saveTradingConfig();
+  }
 
   console.log(`Force update completed. Updated ${updatedCount} positions.`);
+
   return updatedCount;
 }
 
@@ -1274,9 +1349,12 @@ function closePosition(mint, reason, exitPrice) {
   const slippage = grossReturnAmount * (tradingConfig.slippageEstimate / 100);
   const returnAmount = grossReturnAmount - fees - slippage;
 
+  // Ensure investmentAmount is a valid number
+  const investmentAmount = position.investmentAmount || 0;
+
   // Calculate profit
-  const profitAmount = returnAmount - position.investmentAmount;
-  const profitPercent = (profitAmount / position.investmentAmount) * 100;
+  const profitAmount = returnAmount - investmentAmount;
+  const profitPercent = investmentAmount > 0 ? (profitAmount / investmentAmount) * 100 : 0;
 
   // Create closed trade record
   const trade = {
@@ -1415,8 +1493,7 @@ async function executeSellOrder(trade) {
 
           // Send success notification if it took multiple attempts
           if (attempt > 1) {
-            bot.sendMessage(
-              adminChatId,
+            broadcastToAllChats(
               `✅ *AUTO-SELL RECOVERED*: Successfully sold ${trade.symbol} after ${attempt} attempts.\n\n` +
               `[Transaction](${result.explorer}): \`${result.txId.substring(0, 8)}...\``,
               { parse_mode: 'Markdown' }
@@ -1484,7 +1561,7 @@ async function executeSellOrder(trade) {
     errorMsg += `• Or check token in your wallet: https://solscan.io/token/${trade.mint}`;
 
     // Notify about the failure with manual link
-    bot.sendMessage(adminChatId, errorMsg, { parse_mode: 'Markdown' });
+    broadcastToAllChats(errorMsg, { parse_mode: 'Markdown' });
 
     // Add to failed sales list for future retries
     addFailedSaleForRetry(trade);
@@ -1494,8 +1571,7 @@ async function executeSellOrder(trade) {
     console.error(`[AUTO-TRADE] Error selling ${trade.symbol}:`, error);
 
     // Notify about the error with manual link
-    bot.sendMessage(
-      adminChatId,
+    broadcastToAllChats(
       `⚠️ *AUTO-SELL ERROR*: Error selling ${trade.symbol}.\n\n` +
       `Error: ${error.message}\n\n` +
       `Please sell manually on Jupiter: https://jup.ag/swap/SOL-${trade.mint}`,
@@ -1560,9 +1636,9 @@ function addFailedSaleForRetry(trade) {
 // Retry failed sales periodically
 async function retryFailedSales() {
   try {
+    // Skip all processing if auto-trading is disabled
     if (!tradingConfig.autoTrading) {
-      console.log('Auto-trading is disabled. Skipping failed sales retry.');
-      return;
+      return; // Don't even log anything when auto-trading is off
     }
 
     // Check if there are any failed sales to retry
@@ -1621,8 +1697,7 @@ async function retryFailedSales() {
 
           // Send success notification (limit to prevent spam)
           if (notificationsSent < 3) {
-            bot.sendMessage(
-              adminChatId,
+            broadcastToAllChats(
               `✅ *AUTO-RETRY SUCCESS*: Finally sold ${sale.symbol} after ${sale.attempts} attempts.\n\n` +
               `[Transaction](${result.explorer}): \`${result.txId.substring(0, 8)}...\``,
               { parse_mode: 'Markdown' }
@@ -1651,8 +1726,7 @@ async function retryFailedSales() {
 
             // Send notification about terminal error
             if (notificationsSent < 3) {
-              bot.sendMessage(
-                adminChatId,
+              broadcastToAllChats(
                 `ℹ️ *TOKEN NOT FOUND*: ${sale.symbol} was not found in wallet during auto-retry.\n\n` +
                 `It may have been sold already or cleared in a wallet cleanup.`,
                 { parse_mode: 'Markdown' }
@@ -1686,8 +1760,7 @@ async function retryFailedSales() {
 
     // Send summary notification if we had enough activity
     if (salesToRemove.length > 0 || (notificationsSent > 0 && notificationsSent < 3)) {
-      bot.sendMessage(
-        adminChatId,
+      broadcastToAllChats(
         `🔄 *AUTO-RETRY SUMMARY*:\n\n` +
         `• Successfully sold: ${salesToRemove.length} tokens\n` +
         `• Remaining in queue: ${tradingConfig.failedSales.length} tokens\n\n` +
@@ -1699,6 +1772,34 @@ async function retryFailedSales() {
     console.log(`Retry session completed. Sold: ${salesToRemove.length}, Remaining: ${tradingConfig.failedSales.length}`);
   } catch (error) {
     console.error('Error in retry failed sales:', error);
+  }
+}
+
+// Function to broadcast messages to all active chats
+function broadcastToAllChats(message, options = {}) {
+  try {
+    // Get active chats from global scope
+    const activeChats = global.activeChats;
+
+    if (!activeChats || activeChats.size === 0) {
+      console.log('No active chats to broadcast to');
+      return;
+    }
+
+    console.log(`Broadcasting message to ${activeChats.size} active chats`);
+
+    // Send to all active chats
+    for (const chatId of activeChats) {
+      try {
+        // Send the same message with all options to all users
+        // This allows all users to see and use buttons
+        bot.sendMessage(chatId, message, options);
+      } catch (error) {
+        console.error(`Error sending message to chat ${chatId}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error broadcasting message to chats:', error);
   }
 }
 
@@ -1743,7 +1844,7 @@ function notifyBuySignal(position) {
       buyMsg += `\n\n📊 *SIMULATION MODE*: No real trade executed. Use /autotrade on to enable real trading.`;
     }
 
-    // Create inline keyboard with sell options
+    // Create inline keyboard with sell options (only for admin)
     const sellKeyboard = {
       inline_keyboard: [
         [
@@ -1761,8 +1862,8 @@ function notifyBuySignal(position) {
       ]
     };
 
-    // Send to admin chat with sell buttons
-    bot.sendMessage(adminChatId, buyMsg, {
+    // Broadcast to all chats (with buttons only for admin)
+    broadcastToAllChats(buyMsg, {
       parse_mode: 'Markdown',
       reply_markup: sellKeyboard
     });
@@ -1821,8 +1922,8 @@ function notifySellSignal(trade) {
       sellMsg += `\n\n⚠️ *MANUAL ACTION MAY BE REQUIRED*: If auto-sell fails, please sell this token manually on Jupiter.`;
     }
 
-    // Send to admin chat
-    bot.sendMessage(adminChatId, sellMsg, { parse_mode: 'Markdown' });
+    // Broadcast to all chats
+    broadcastToAllChats(sellMsg, { parse_mode: 'Markdown' });
 
   } catch (error) {
     console.error('Error sending sell signal notification:', error);
@@ -1916,6 +2017,12 @@ function manualEntry(symbol, mint, entryPrice, investmentAmount, takeProfitPerce
 // Hook into alertTracker to process new alerts for trading
 function hookIntoAlertTracker(mint, alertData) {
   try {
+    // Skip all alert processing if auto-trading is disabled
+    if (!tradingConfig.autoTrading) {
+      // When auto-trading is off, don't process any alerts
+      return;
+    }
+
     if (!mint || !alertData) {
       console.log("Skipping trade hook - invalid alert data");
       return;
@@ -1926,6 +2033,22 @@ function hookIntoAlertTracker(mint, alertData) {
     if (!tokenInfo) {
       console.log(`Skipping trade hook - token info not found for ${mint}`);
       return;
+    }
+
+    // Ensure alertData has all required properties
+    if (!alertData.type) {
+      console.log(`Alert data missing required 'type' property for ${mint}`);
+      alertData.type = 'unknown';
+    }
+
+    if (!alertData.symbol) {
+      console.log(`Alert data missing 'symbol' property for ${mint}, using mint address`);
+      alertData.symbol = mint.slice(0, 6);
+    }
+
+    if (!alertData.initialMarketCap) {
+      console.log(`Alert data missing 'initialMarketCap' property for ${mint}, using current market cap`);
+      alertData.initialMarketCap = tokenInfo.marketCapSol || 0;
     }
 
     console.log(`Processing alert for trading: ${alertData.symbol || mint}`);
@@ -1952,16 +2075,43 @@ function setupTradingCommands() {
     const command = match[1].toLowerCase();
     const enable = command === 'on';
 
-    tradingConfig.autoTrading = enable;
+    // Use the toggleAutoTrading function to properly adjust interval timers
+    tradingConfig.toggleAutoTrading(enable);
     tradingConfig.notifyOnSignals = enable; // Notifications follow auto-trading setting
+
+    // When turning auto-trading off, clear all simulation positions
+    if (!enable) {
+      // Count how many positions we had before clearing
+      const positionCount = tradingConfig.activePositions.size;
+
+      // Clear all positions when turning off auto-trading
+      tradingConfig.activePositions = new Map();
+
+      console.log(`Auto-trading disabled. Cleared ${positionCount} positions.`);
+    }
+
     saveTradingConfig();
 
-    bot.sendMessage(
-      chatId,
-      `🤖 Auto-trading has been turned ${enable ? 'ON' : 'OFF'}.\n` +
-      `📊 Trading notifications have also been turned ${enable ? 'ON' : 'OFF'}.`,
-      { parse_mode: 'Markdown' }
-    );
+    // Send a more detailed message about what's happening
+    let message = `🤖 Auto-trading has been turned ${enable ? 'ON' : 'OFF'}.\n`;
+    message += `📊 Trading notifications have also been turned ${enable ? 'ON' : 'OFF'}.\n\n`;
+
+    if (enable) {
+      message += `✅ *System optimizations:*\n`;
+      message += `• Position checks: Every 5 seconds\n`;
+      message += `• Failed sale retries: Every 10 minutes\n`;
+      message += `• Alert processing: Enabled\n`;
+      message += `• Full logging enabled\n`;
+    } else {
+      message += `⚡ *System optimizations:*\n`;
+      message += `• Position checks: Disabled\n`;
+      message += `• Failed sale retries: Disabled\n`;
+      message += `• Alert processing: Disabled\n`;
+      message += `• All simulation positions cleared\n`;
+      message += `• Significant reduction in CPU and memory usage\n`;
+    }
+
+    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
   });
 
   // Command to toggle auto-trading messages
@@ -3368,6 +3518,41 @@ function getTradingConfig() {
   return tradingConfig;
 }
 
+// Set up interval timers with appropriate frequencies based on auto-trading status
+function setupIntervalTimers() {
+  // Clear existing intervals if they exist
+  if (global.tradingIntervals.positionCheck) {
+    clearInterval(global.tradingIntervals.positionCheck);
+    global.tradingIntervals.positionCheck = null;
+  }
+
+  if (global.tradingIntervals.failedSalesRetry) {
+    clearInterval(global.tradingIntervals.failedSalesRetry);
+    global.tradingIntervals.failedSalesRetry = null;
+  }
+
+  // Set different intervals based on auto-trading status
+  if (tradingConfig.autoTrading) {
+    // Auto-trading is ON - use normal intervals
+    // Check positions every 5 seconds
+    global.tradingIntervals.positionCheck = setInterval(checkAllPositions, 5 * 1000);
+
+    // Retry failed sales every 10 minutes
+    global.tradingIntervals.failedSalesRetry = setInterval(retryFailedSales, 10 * 60 * 1000);
+
+    console.log('Interval timers set to normal frequency (positions: 5s, retries: 10min)');
+  } else {
+    // Auto-trading is OFF - use reduced frequency intervals
+    // Check positions every 30 seconds (6x less frequently)
+    global.tradingIntervals.positionCheck = setInterval(checkAllPositions, 30 * 1000);
+
+    // Retry failed sales every 30 minutes (3x less frequently)
+    global.tradingIntervals.failedSalesRetry = setInterval(retryFailedSales, 30 * 60 * 1000);
+
+    console.log('Interval timers set to reduced frequency (positions: 30s, retries: 30min)');
+  }
+}
+
 // Export all functions
 module.exports = {
   initialize,
@@ -3380,5 +3565,6 @@ module.exports = {
   addTradingInfoToTopPumps,
   manualEntry,
   calculatePotentialProfit,
-  getTradingConfig
+  getTradingConfig,
+  setupIntervalTimers
 };

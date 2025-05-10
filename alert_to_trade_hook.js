@@ -1,6 +1,6 @@
 /**
  * alert_to_trade_hook.js
- * 
+ *
  * This module hooks into all alert types (bullish tokens, smart money, migrations)
  * and forwards them to the trading system for potential trades.
  */
@@ -18,7 +18,7 @@ let tokenRegistry = null;
 function initialize(dependencies) {
   tradingSystemAPI = dependencies.tradingSystemAPI;
   tokenRegistry = dependencies.tokenRegistry;
-  
+
   console.log('Alert-to-trade hook initialized');
   return {
     processBullishAlert,
@@ -34,25 +34,29 @@ function initialize(dependencies) {
  */
 function processBullishAlert(alertData) {
   const { mint, marketCapSol, volume, symbol } = alertData;
-  
+
   // Skip if already processed
   const alertId = `bullish-${mint}-${Date.now()}`;
   if (processedAlerts.has(alertId)) return;
   processedAlerts.add(alertId);
-  
+
   // Log and send to trading system
   console.log(`[ALERT-TO-TRADE] Processing bullish token alert for ${symbol || mint}`);
-  
+
   if (tradingSystemAPI && typeof tradingSystemAPI.hookIntoAlertTracker === 'function') {
     // Get token info from registry
     const tokenInfo = tokenRegistry ? tokenRegistry.get(mint) : null;
-    
-    tradingSystemAPI.hookIntoAlertTracker(mint, {
+
+    // Ensure all required fields are present and valid
+    const alertData = {
       type: 'tokenAlert',
       symbol: symbol || (tokenInfo?.symbol) || mint.slice(0, 6),
-      initialMarketCap: marketCapSol || (tokenInfo?.marketCap) || 0,
+      initialMarketCap: marketCapSol || (tokenInfo?.marketCap) || (tokenInfo?.marketCapSol) || 0,
       volume: volume || 0
-    });
+    };
+
+    console.log(`Sending tokenAlert to trading system: ${JSON.stringify(alertData)}`);
+    tradingSystemAPI.hookIntoAlertTracker(mint, alertData);
   }
 }
 
@@ -62,25 +66,29 @@ function processBullishAlert(alertData) {
  */
 function processSmartMoneyAlert(alertData) {
   const { mint, price, marketCap, symbol, walletAddress } = alertData;
-  
+
   // Skip if already processed
   const alertId = `smartmoney-${mint}-${walletAddress || 'unknown'}-${Date.now()}`;
   if (processedAlerts.has(alertId)) return;
   processedAlerts.add(alertId);
-  
+
   // Log and send to trading system
   console.log(`[ALERT-TO-TRADE] Processing smart money alert for ${symbol || mint}`);
-  
+
   if (tradingSystemAPI && typeof tradingSystemAPI.hookIntoAlertTracker === 'function') {
     // Get token info from registry
     const tokenInfo = tokenRegistry ? tokenRegistry.get(mint) : null;
-    
-    tradingSystemAPI.hookIntoAlertTracker(mint, {
+
+    // Ensure all required fields are present and valid
+    const alertData = {
       type: 'smartMoney',
       symbol: symbol || (tokenInfo?.symbol) || mint.slice(0, 6),
-      initialMarketCap: marketCap || (tokenInfo?.marketCap) || 0,
-      walletAddress
-    });
+      initialMarketCap: marketCap || (tokenInfo?.marketCap) || (tokenInfo?.marketCapSol) || 0,
+      walletAddress: walletAddress || 'unknown'
+    };
+
+    console.log(`Sending smartMoney alert to trading system: ${JSON.stringify(alertData)}`);
+    tradingSystemAPI.hookIntoAlertTracker(mint, alertData);
   }
 }
 
@@ -90,24 +98,28 @@ function processSmartMoneyAlert(alertData) {
  */
 function processMigrationAlert(alertData) {
   const { mint, marketCapSol, symbol, pool } = alertData;
-  
+
   // Skip if already processed
   const alertId = `migration-${mint}-${pool || 'unknown'}-${Date.now()}`;
   if (processedAlerts.has(alertId)) return;
   processedAlerts.add(alertId);
-  
+
   // Log and send to trading system
   console.log(`[ALERT-TO-TRADE] Processing migration alert for ${symbol || mint}`);
-  
+
   if (tradingSystemAPI && typeof tradingSystemAPI.hookIntoAlertTracker === 'function') {
     // Get token info from registry
     const tokenInfo = tokenRegistry ? tokenRegistry.get(mint) : null;
-    
-    tradingSystemAPI.hookIntoAlertTracker(mint, {
+
+    // Ensure all required fields are present and valid
+    const alertData = {
       type: 'migration',
       symbol: symbol || (tokenInfo?.symbol) || mint.slice(0, 6),
-      initialMarketCap: marketCapSol || (tokenInfo?.marketCap) || 0
-    });
+      initialMarketCap: marketCapSol || (tokenInfo?.marketCap) || (tokenInfo?.marketCapSol) || 0
+    };
+
+    console.log(`Sending migration alert to trading system: ${JSON.stringify(alertData)}`);
+    tradingSystemAPI.hookIntoAlertTracker(mint, alertData);
   }
 }
 

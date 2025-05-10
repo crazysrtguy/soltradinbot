@@ -143,30 +143,9 @@ async function broadcastPhotoToChats(photoUrl, options = {}) {
 
 // Helper function to check if a token has been alerted already
 function hasAlertedToken(mint) {
-  // First check if the token is in the global deduplication set
-  if (!globalAlertDeduplication.has(mint)) {
-    return false; // Token has not been alerted yet
-  }
-
-  // If token is in the registry, check if it has gained more than 200% since last alert
-  if (tokenRegistry && tokenRegistry.has(mint)) {
-    const tokenInfo = tokenRegistry.get(mint);
-    const lastAlertPrice = tokenInfo.lastAlertPrice || 0;
-    const currentPrice = tokenInfo.currentPrice || 0;
-
-    if (lastAlertPrice > 0 && currentPrice > 0) {
-      const priceChangeSinceLastAlert = ((currentPrice - lastAlertPrice) / lastAlertPrice) * 100;
-
-      // If price has gained more than 200%, allow another alert
-      if (priceChangeSinceLastAlert >= 200) {
-        console.log(`Token ${tokenInfo.symbol || mint} has gained ${priceChangeSinceLastAlert.toFixed(2)}% since last alert (>200%), allowing new alert`);
-        return false;
-      }
-    }
-  }
-
-  // Default case: token has been alerted and doesn't meet criteria for a new alert
-  return true;
+  // Simply check if the token is in the global deduplication set
+  // We no longer allow follow-up alerts based on price movement
+  return globalAlertDeduplication.has(mint);
 }
 
 // Function to reset deduplication if needed
@@ -190,10 +169,9 @@ async function createSmartMoneyAlert(data) {
   } = data;
 
   try {
-    // Check global deduplication first using our enhanced function
-    // This will automatically check if the token has gained more than 200% since last alert
+    // Check global deduplication
     if (hasAlertedToken(mint)) {
-      console.log(`GLOBAL DEDUPE: Skipping smart money alert for ${tokenInfo.symbol || mint} - token already alerted and price gain < 200%`);
+      console.log(`GLOBAL DEDUPE: Skipping smart money alert for ${tokenInfo.symbol || mint} - token already alerted`);
       return false;
     }
 
@@ -303,10 +281,9 @@ async function createMigrationAlert(data) {
   } = data;
 
   try {
-    // Check global deduplication first using our enhanced function
-    // This will automatically check if the token has gained more than 200% since last alert
+    // Check global deduplication
     if (hasAlertedToken(mint)) {
-      console.log(`GLOBAL DEDUPE: Skipping migration alert for ${tokenInfo.symbol || mint} - token already alerted and price gain < 200%`);
+      console.log(`GLOBAL DEDUPE: Skipping migration alert for ${tokenInfo.symbol || mint} - token already alerted`);
       return false;
     }
 
@@ -437,10 +414,9 @@ async function createBullishTokenAlert(data) {
   } = data;
 
   try {
-    // Check global deduplication first using our enhanced function
-    // This will automatically check if the token has gained more than 200% since last alert
+    // Check global deduplication
     if (hasAlertedToken(mint)) {
-      console.log(`GLOBAL DEDUPE: Skipping bullish token alert for ${tokenInfo.symbol || mint} - token already alerted and price gain < 200%`);
+      console.log(`GLOBAL DEDUPE: Skipping bullish token alert for ${tokenInfo.symbol || mint} - token already alerted`);
       return false;
     }
 
