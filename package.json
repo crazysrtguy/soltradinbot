@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node tradingbot.js",
+    "start": "node index.js",
     "logger": "node ws_logger.js",
     "migrations": "node view_migrations.js",
     "alerts": "node migration_alert.js",
